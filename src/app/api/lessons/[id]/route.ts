@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { parseBody, LessonUpdateSchema } from "@/lib/security/validators";
+import { isLessonOwner, isCoursOwner } from "@/lib/security/ownership";
+import { sanitizeHtml } from "@/lib/security/sanitize";
 import type { Lesson } from "@/types/course";
 
 export async function GET(
@@ -10,7 +13,6 @@ export async function GET(
 ) {
   const { id } = await params;
 
-  // If id looks like "new-{moduleId}", create a new lesson
   if (id.startsWith("new-")) {
     return NextResponse.json({ error: "Use POST to create" }, { status: 400 });
   }
@@ -33,10 +35,33 @@ export async function PUT(
   }
 
   const { id } = await params;
+  const user = session.user as { id?: string };
+
+  // Ownership check: only the course owner can edit lessons
+  const isOwner = await isLessonOwner(id, user.id!);
+  if (!isOwner) {
+    return NextResponse.json({ error: "권한 없음" }, { status: 403 });
+  }
+
   const body = await req.json();
+  const parsed = parseBody(LessonUpdateSchema, body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error }, { status: 400 });
+  }
+
+  // Sanitize HTML content in blocks
+  const updateData = { ...parsed.data };
+  if (updateData.blocks && Array.isArray(updateData.blocks)) {
+    updateData.blocks = updateData.blocks.map((block: Record<string, unknown>) => {
+      if (typeof block.content === "string") {
+        return { ...block, content: sanitizeHtml(block.content) };
+      }
+      return block;
+    });
+  }
 
   const updated = await db.lessons.update(id, {
-    ...body,
+    ...updateData,
     updatedAt: new Date().toISOString(),
   });
 
@@ -56,15 +81,21 @@ export async function POST(
     return NextResponse.json({ error: "인증 필요" }, { status: 401 });
   }
 
-  // id here is moduleId
   const { id: moduleId } = await params;
-  const body = await req.json();
+  const user = session.user as { id?: string };
 
   const mod = await db.modules.findById(moduleId);
   if (!mod) {
     return NextResponse.json({ error: "모듈 없음" }, { status: 404 });
   }
 
+  // Ownership check
+  const isOwner = await isCoursOwner(mod.courseId, user.id!);
+  if (!isOwner) {
+    return NextResponse.json({ error: "권한 없음" }, { status: 403 });
+  }
+
+  const body = await req.json();
   const existing = await db.lessons.findMany((l) => l.moduleId === moduleId);
   const now = new Date().toISOString();
 
@@ -72,7 +103,7 @@ export async function POST(
     id: uuidv4(),
     moduleId,
     courseId: mod.courseId,
-    title: body.title || "새 레슨",
+    title: typeof body.title === "string" ? body.title.slice(0, 200) : "새 레슨",
     orderIndex: existing.length,
     blocks: [],
     createdAt: now,
@@ -93,6 +124,14 @@ export async function DELETE(
   }
 
   const { id } = await params;
+  const user = session.user as { id?: string };
+
+  // Ownership check
+  const isOwner = await isLessonOwner(id, user.id!);
+  if (!isOwner) {
+    return NextResponse.json({ error: "권한 없음" }, { status: 403 });
+  }
+
   await db.lessons.delete(id);
   return NextResponse.json({ success: true });
 }

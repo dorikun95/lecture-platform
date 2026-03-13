@@ -45,9 +45,21 @@ function renderViewBlock(block: Block) {
   }
 }
 
+function sanitizeText(input: string): string {
+  return input
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
+    .replace(/on\w+\s*=\s*["'][^"']*["']/gi, "")
+    .replace(/on\w+\s*=\s*[^\s>]+/gi, "")
+    .replace(/javascript\s*:/gi, "")
+    .replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, "")
+    .replace(/<object\b[^<]*(?:(?!<\/object>)<[^<]*)*<\/object>/gi, "")
+    .replace(/<embed\b[^>]*>/gi, "")
+    .replace(/<form\b[^<]*(?:(?!<\/form>)<[^<]*)*<\/form>/gi, "");
+}
+
 function TextViewer({ text }: { text: string }) {
-  // Simple markdown rendering
-  const html = text
+  // Sanitize input before markdown rendering
+  const html = sanitizeText(text)
     .replace(/^### (.+)$/gm, '<h3 class="text-lg font-semibold text-neutral-900 mt-4 mb-2">$1</h3>')
     .replace(/^## (.+)$/gm, '<h2 class="text-xl font-bold text-neutral-900 mt-6 mb-3">$1</h2>')
     .replace(/^# (.+)$/gm, '<h1 class="text-2xl font-bold text-neutral-900 mt-8 mb-4">$1</h1>')

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { parseBody, BookmarkSchema } from "@/lib/security/validators";
+import { sanitizeHtml } from "@/lib/security/sanitize";
 import type { Bookmark } from "@/types/course";
 
 export async function GET() {
@@ -24,8 +26,19 @@ export async function POST(req: NextRequest) {
   const user = session.user as { id?: string };
   const body = await req.json();
 
+  const parsed = parseBody(BookmarkSchema, body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error }, { status: 400 });
+  }
+
+  // Verify lesson exists
+  const lesson = await db.lessons.findById(parsed.data.lessonId);
+  if (!lesson) {
+    return NextResponse.json({ error: "레슨을 찾을 수 없습니다." }, { status: 404 });
+  }
+
   const existing = await db.bookmarks.findOne(
-    (b) => b.userId === user.id && b.lessonId === body.lessonId
+    (b) => b.userId === user.id && b.lessonId === parsed.data.lessonId
   );
   if (existing) {
     await db.bookmarks.delete(existing.id);
@@ -35,8 +48,8 @@ export async function POST(req: NextRequest) {
   const bookmark: Bookmark = {
     id: uuidv4(),
     userId: user.id!,
-    lessonId: body.lessonId,
-    note: body.note || "",
+    lessonId: parsed.data.lessonId,
+    note: sanitizeHtml(parsed.data.note || ""),
     createdAt: new Date().toISOString(),
   };
 

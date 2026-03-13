@@ -3,7 +3,9 @@ import { v4 as uuidv4 } from "uuid";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { slugify } from "@/lib/utils";
-import type { Course, Category, Difficulty, Visibility } from "@/types/course";
+import { parseBody, CourseCreateSchema } from "@/lib/security/validators";
+import { sanitizeCourse } from "@/lib/security/sanitize";
+import type { Course } from "@/types/course";
 
 export async function GET() {
   try {
@@ -26,7 +28,7 @@ export async function GET() {
         new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
     );
 
-    return NextResponse.json({ courses });
+    return NextResponse.json({ courses: courses.map(sanitizeCourse) });
   } catch {
     return NextResponse.json({ courses: [] });
   }
@@ -45,21 +47,12 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { title, description, category, difficulty, visibility } = body as {
-      title: string;
-      description: string;
-      category: Category;
-      difficulty: Difficulty;
-      visibility: Visibility;
-    };
-
-    if (!title) {
-      return NextResponse.json(
-        { error: "코스 제목을 입력해주세요." },
-        { status: 400 }
-      );
+    const parsed = parseBody(CourseCreateSchema, body);
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error }, { status: 400 });
     }
 
+    const { title, description, category, difficulty, visibility } = parsed.data;
     const slug = slugify(title) + "-" + uuidv4().slice(0, 8);
     const now = new Date().toISOString();
 
@@ -70,7 +63,7 @@ export async function POST(req: NextRequest) {
       slug,
       description: description || "",
       visibility: visibility || "private",
-      category: category || "other",
+      category: (category || "other") as Course["category"],
       difficulty: difficulty || "beginner",
       shareToken: uuidv4(),
       createdAt: now,
@@ -79,7 +72,7 @@ export async function POST(req: NextRequest) {
 
     await db.courses.create(course);
 
-    return NextResponse.json({ course }, { status: 201 });
+    return NextResponse.json({ course: sanitizeCourse(course) }, { status: 201 });
   } catch {
     return NextResponse.json(
       { error: "서버 오류가 발생했습니다." },

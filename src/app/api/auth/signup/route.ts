@@ -2,28 +2,41 @@ import { NextRequest, NextResponse } from "next/server";
 import { hash } from "bcryptjs";
 import { v4 as uuidv4 } from "uuid";
 import { db, ensureSeed } from "@/lib/db";
-import type { User, UserRole } from "@/types/user";
+import { parseBody, SignupSchema } from "@/lib/security/validators";
+import { validatePassword } from "@/lib/security/password-policy";
+import { checkRateLimit, RATE_LIMITS } from "@/lib/security/rate-limiter";
+import type { User } from "@/types/user";
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const { email, password, name, role } = body as {
-      email: string;
-      password: string;
-      name: string;
-      role: UserRole;
-    };
-
-    if (!email || !password || !name || !role) {
+    // Rate limit signup attempts by IP
+    const ip =
+      req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+      req.headers.get("x-real-ip") ??
+      "unknown";
+    const rateCheck = checkRateLimit(`signup:${ip}`, RATE_LIMITS.signup);
+    if (!rateCheck.allowed) {
       return NextResponse.json(
-        { error: "모든 필드를 입력해주세요." },
-        { status: 400 }
+        { error: "너무 많은 시도입니다. 잠시 후 다시 시도하세요." },
+        { status: 429 }
       );
     }
 
-    if (!["instructor", "student"].includes(role)) {
+    const body = await req.json();
+
+    // Validate input with Zod schema
+    const parsed = parseBody(SignupSchema, body);
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error }, { status: 400 });
+    }
+
+    const { email, password, name, role } = parsed.data;
+
+    // Password policy check
+    const pwCheck = validatePassword(password);
+    if (!pwCheck.valid) {
       return NextResponse.json(
-        { error: "유효하지 않은 역할입니다." },
+        { error: pwCheck.errors.join(", ") },
         { status: 400 }
       );
     }

@@ -12,11 +12,23 @@ export async function PUT(
   }
 
   const { id } = await params;
-  const body = await req.json();
+  const user = session.user as { id?: string };
 
   const enrollment = await db.enrollments.findById(id);
   if (!enrollment) {
     return NextResponse.json({ error: "등록 없음" }, { status: 404 });
+  }
+
+  // Ownership check: only the enrolled user can update their progress
+  if (enrollment.userId !== user.id) {
+    return NextResponse.json({ error: "권한 없음" }, { status: 403 });
+  }
+
+  const body = await req.json();
+
+  // Only allow progress updates, nothing else
+  if (!body.progress || typeof body.progress !== "object") {
+    return NextResponse.json({ error: "잘못된 요청" }, { status: 400 });
   }
 
   const updated = await db.enrollments.update(id, {

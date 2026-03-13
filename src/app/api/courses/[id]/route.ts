@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { parseBody, CourseUpdateSchema } from "@/lib/security/validators";
+import { sanitizeCourse } from "@/lib/security/sanitize";
 
 export async function GET(
   _req: NextRequest,
@@ -21,7 +23,7 @@ export async function GET(
 
   const lessons = await db.lessons.findMany((l) => l.courseId === course.id);
 
-  return NextResponse.json({ course, modules, lessons });
+  return NextResponse.json({ course: sanitizeCourse(course), modules, lessons });
 }
 
 export async function PUT(
@@ -45,12 +47,18 @@ export async function PUT(
   }
 
   const body = await req.json();
+  const parsed = parseBody(CourseUpdateSchema, body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error }, { status: 400 });
+  }
+
+  // Only allow validated fields — prevents mass assignment
   const updated = await db.courses.update(id, {
-    ...body,
+    ...(parsed.data as Partial<typeof course>),
     updatedAt: new Date().toISOString(),
   });
 
-  return NextResponse.json({ course: updated });
+  return NextResponse.json({ course: sanitizeCourse(updated!) });
 }
 
 export async function DELETE(
