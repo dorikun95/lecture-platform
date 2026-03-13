@@ -2,25 +2,47 @@ import fs from "fs/promises";
 import path from "path";
 
 const DATA_DIR = path.join(process.cwd(), "data");
+const IS_VERCEL = !!process.env.VERCEL;
+
+// In-memory store for serverless environments
+const memoryStore = new Map<string, unknown[]>();
 
 async function ensureDir() {
+  if (IS_VERCEL) return;
   try {
     await fs.mkdir(DATA_DIR, { recursive: true });
   } catch {}
 }
 
 async function readJson<T>(filename: string): Promise<T[]> {
+  // Check memory first
+  if (memoryStore.has(filename)) {
+    return memoryStore.get(filename) as T[];
+  }
+
+  if (IS_VERCEL) {
+    memoryStore.set(filename, []);
+    return [];
+  }
+
   await ensureDir();
   const filePath = path.join(DATA_DIR, filename);
   try {
     const data = await fs.readFile(filePath, "utf-8");
-    return JSON.parse(data);
+    const parsed = JSON.parse(data) as T[];
+    memoryStore.set(filename, parsed);
+    return parsed;
   } catch {
+    memoryStore.set(filename, []);
     return [];
   }
 }
 
 async function writeJson<T>(filename: string, data: T[]): Promise<void> {
+  memoryStore.set(filename, data);
+
+  if (IS_VERCEL) return;
+
   await ensureDir();
   const filePath = path.join(DATA_DIR, filename);
   await fs.writeFile(filePath, JSON.stringify(data, null, 2), "utf-8");

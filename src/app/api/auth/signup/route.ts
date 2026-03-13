@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { hash } from "bcryptjs";
 import { v4 as uuidv4 } from "uuid";
-import { db } from "@/lib/db";
+import { db, ensureSeed } from "@/lib/db";
 import type { User, UserRole } from "@/types/user";
 
 export async function POST(req: NextRequest) {
@@ -28,6 +28,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    await ensureSeed();
     const existing = await db.users.findOne((u) => u.email === email);
     if (existing) {
       return NextResponse.json(
