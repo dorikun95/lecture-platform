@@ -1,5 +1,4 @@
 import { JsonCollection } from "./json-store";
-import { hashSync } from "bcryptjs";
 import type { User } from "@/types/user";
 import type {
   Course,
@@ -26,7 +25,10 @@ export const db = {
   forks: new JsonCollection<Fork>("forks.json"),
 };
 
-// Seed default users on first access (for serverless environments)
+// Pre-hashed passwords (bcrypt, 12 rounds)
+const HASH_ADMIN = "$2b$12$f52agCeH72PChJJ6WjZCf.8HyPmMKJqL/n2.z0/PyfCmS0Yk4IMRO";
+const HASH_TEST = "$2b$12$N9zhxuTUsgII1HFBkUdl.OFqYkArHAmpmM2/SZpL1SY4pSgqW6huW";
+
 let seeded = false;
 export async function ensureSeed() {
   if (seeded) return;
@@ -40,7 +42,7 @@ export async function ensureSeed() {
       id: "admin-001",
       email: "admin@example.com",
       name: "Admin",
-      password: hashSync("admin1234", 12),
+      password: HASH_ADMIN,
       role: "admin",
       createdAt: new Date().toISOString(),
     },
@@ -48,7 +50,7 @@ export async function ensureSeed() {
       id: "instructor-001",
       email: "instructor@example.com",
       name: "Instructor",
-      password: hashSync("test1234", 12),
+      password: HASH_TEST,
       role: "instructor",
       createdAt: new Date().toISOString(),
     },
@@ -56,7 +58,7 @@ export async function ensureSeed() {
       id: "student-001",
       email: "student@example.com",
       name: "Student",
-      password: hashSync("test1234", 12),
+      password: HASH_TEST,
       role: "student",
       createdAt: new Date().toISOString(),
     },
